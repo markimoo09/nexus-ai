@@ -1,11 +1,17 @@
 from fastapi import FastAPI
+from httpx import request
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from fastapi.responses import StreamingResponse
+import asyncio
 
 app = FastAPI()
 
 class GeoHussarResponse(BaseModel):
     answer: str = Field(description="The response to the user's question(s)")
+
+class GeoHussarRequest(BaseModel):
+    chat_message: str = Field(description="The user's chat message")
 
 
 SYSTEM_PROMPT = """
@@ -37,3 +43,21 @@ async def test():
         return result.output.answer
     except Exception as e:
         return {"error": str(e)}
+
+@app.post("/chat")
+async def nexus_chat(chat: GeoHussarRequest):
+    chat_message = chat.chat_message
+    try:
+        async def generate():
+            async with agent.run_stream(chat_message) as result:
+                async for chunk in result.stream_output():
+                    answer = chunk.answer
+                    yield answer.encode("utf-8")
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/plain"
+        )
+
+    except Exception as e:
+        return {"error": e}
